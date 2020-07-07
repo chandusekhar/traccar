@@ -26,6 +26,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.traccar.config.Keys;
 import org.traccar.handler.DefaultDataHandler;
+import org.traccar.handler.TimeHandler;
 import org.traccar.handler.events.AlertEventHandler;
 import org.traccar.handler.events.CommandResultEventHandler;
 import org.traccar.handler.events.DriverEventHandler;
@@ -120,6 +121,7 @@ public abstract class BasePipelineFactory extends ChannelInitializer<Channel> {
 
         addHandlers(
                 pipeline,
+                TimeHandler.class,
                 GeolocationHandler.class,
                 HemisphereHandler.class,
                 DistanceHandler.class,
@@ -132,8 +134,8 @@ public abstract class BasePipelineFactory extends ChannelInitializer<Channel> {
                 FilterHandler.class,
                 GeocoderHandler.class,
                 MotionHandler.class,
-                EngineHoursHandler.class,
                 CopyAttributesHandler.class,
+                EngineHoursHandler.class,
                 ComputedAttributesHandler.class,
                 WebDataHandler.class,
                 DefaultDataHandler.class);

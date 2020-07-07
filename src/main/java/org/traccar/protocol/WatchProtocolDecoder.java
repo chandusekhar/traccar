@@ -249,8 +249,7 @@ public class WatchProtocolDecoder extends BaseProtocolDecoder {
                 }
             }
 
-        } else if (type.equals("UD") || type.equals("UD2") || type.equals("UD3")
-                || type.equals("AL") || type.equals("WT")) {
+        } else if (type.startsWith("UD") || type.equals("AL") || type.equals("WT")) {
 
             Position position = decodePosition(deviceSession, buf.toString(StandardCharsets.US_ASCII));
 
@@ -263,11 +262,14 @@ public class WatchProtocolDecoder extends BaseProtocolDecoder {
 
             return position;
 
-        } else if (type.equals("TKQ")) {
+        } else if (type.equals("TKQ") || type.equals("TKQ2")) {
 
-            sendResponse(channel, id, index, "TKQ");
+            sendResponse(channel, id, index, type);
 
-        } else if (type.equals("PULSE") || type.equals("heart") || type.equals("bphrt")) {
+        } else if (type.equalsIgnoreCase("PULSE")
+                || type.equalsIgnoreCase("HEART")
+                || type.equalsIgnoreCase("BLOOD")
+                || type.equalsIgnoreCase("BPHRT")) {
 
             if (buf.isReadable()) {
 
@@ -279,11 +281,14 @@ public class WatchProtocolDecoder extends BaseProtocolDecoder {
                 String[] values = buf.toString(StandardCharsets.US_ASCII).split(",");
                 int valueIndex = 0;
 
-                if (type.equals("bphrt")) {
+                if (type.equalsIgnoreCase("BPHRT") || type.equalsIgnoreCase("BLOOD")) {
                     position.set("pressureHigh", values[valueIndex++]);
                     position.set("pressureLow", values[valueIndex++]);
                 }
-                position.set(Position.KEY_HEART_RATE, Integer.parseInt(values[valueIndex]));
+
+                if (valueIndex <= values.length - 1) {
+                    position.set(Position.KEY_HEART_RATE, Integer.parseInt(values[valueIndex]));
+                }
 
                 return position;
 

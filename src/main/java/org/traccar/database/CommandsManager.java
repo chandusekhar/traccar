@@ -1,5 +1,5 @@
 /*
- * Copyright 2017 Anton Tananaev (anton@traccar.org)
+ * Copyright 2017 - 2020 Anton Tananaev (anton@traccar.org)
  * Copyright 2017 Andrey Kunitsyn (andrey@traccar.org)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,6 +20,7 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Queue;
@@ -75,7 +76,12 @@ public class CommandsManager  extends ExtendedObjectManager<Command> {
         } else {
             ActiveDevice activeDevice = Context.getConnectionManager().getActiveDevice(deviceId);
             if (activeDevice != null) {
-                activeDevice.sendCommand(command);
+                if (activeDevice.supportsLiveCommands()) {
+                    activeDevice.sendCommand(command);
+                } else {
+                    getDeviceQueue(deviceId).add(command);
+                    return false;
+                }
             } else if (!queueing) {
                 throw new RuntimeException("Device is not online");
             } else {
@@ -106,17 +112,21 @@ public class CommandsManager  extends ExtendedObjectManager<Command> {
     }
 
     public Collection<Typed> getCommandTypes(long deviceId, boolean textChannel) {
-        List<Typed> result = new ArrayList<>();
         Position lastPosition = Context.getIdentityManager().getLastPosition(deviceId);
         if (lastPosition != null) {
-            BaseProtocol protocol = Context.getServerManager().getProtocol(lastPosition.getProtocol());
-            Collection<String> commands;
-            commands = textChannel ? protocol.getSupportedTextCommands() : protocol.getSupportedDataCommands();
-            for (String commandKey : commands) {
-                result.add(new Typed(commandKey));
-            }
+            return getCommandTypes(lastPosition.getProtocol(), textChannel);
         } else {
-            result.add(new Typed(Command.TYPE_CUSTOM));
+            return Collections.singletonList(new Typed(Command.TYPE_CUSTOM));
+        }
+    }
+
+    public Collection<Typed> getCommandTypes(String protocolName, boolean textChannel) {
+        List<Typed> result = new ArrayList<>();
+        BaseProtocol protocol = Context.getServerManager().getProtocol(protocolName);
+        Collection<String> commands;
+        commands = textChannel ? protocol.getSupportedTextCommands() : protocol.getSupportedDataCommands();
+        for (String commandKey : commands) {
+            result.add(new Typed(commandKey));
         }
         return result;
     }
@@ -137,21 +147,46 @@ public class CommandsManager  extends ExtendedObjectManager<Command> {
     }
 
     private Queue<Command> getDeviceQueue(long deviceId) {
-        if (!deviceQueues.containsKey(deviceId)) {
-            deviceQueues.put(deviceId, new ConcurrentLinkedQueue<Command>());
+        Queue<Command> deviceQueue;
+        try {
+            readLock();
+            deviceQueue = deviceQueues.get(deviceId);
+        } finally {
+            readUnlock();
         }
-        return deviceQueues.get(deviceId);
+        if (deviceQueue != null) {
+            return deviceQueue;
+        } else {
+            try {
+                writeLock();
+                return deviceQueues.computeIfAbsent(deviceId, key -> new ConcurrentLinkedQueue<>());
+            } finally {
+                writeUnlock();
+            }
+        }
     }
 
-    public void sendQueuedCommands(ActiveDevice activeDevice) {
-        Queue<Command> deviceQueue = deviceQueues.get(activeDevice.getDeviceId());
+    public Collection<Command> readQueuedCommands(long deviceId) {
+        return readQueuedCommands(deviceId, Integer.MAX_VALUE);
+    }
+
+    public Collection<Command> readQueuedCommands(long deviceId, int count) {
+        Queue<Command> deviceQueue;
+        try {
+            readLock();
+            deviceQueue = deviceQueues.get(deviceId);
+        } finally {
+            readUnlock();
+        }
+        Collection<Command> result = new ArrayList<>();
         if (deviceQueue != null) {
             Command command = deviceQueue.poll();
-            while (command != null) {
-                activeDevice.sendCommand(command);
+            while (command != null && result.size() < count) {
+                result.add(command);
                 command = deviceQueue.poll();
             }
         }
+        return result;
     }
 
 }

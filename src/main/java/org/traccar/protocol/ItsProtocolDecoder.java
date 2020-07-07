@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 - 2019 Anton Tananaev (anton@traccar.org)
+ * Copyright 2018 - 2020 Anton Tananaev (anton@traccar.org)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,6 +23,8 @@ import org.traccar.Protocol;
 import org.traccar.helper.Parser;
 import org.traccar.helper.PatternBuilder;
 import org.traccar.helper.UnitsConverter;
+import org.traccar.model.CellTower;
+import org.traccar.model.Network;
 import org.traccar.model.Position;
 
 import java.net.SocketAddress;
@@ -39,24 +41,24 @@ public class ItsProtocolDecoder extends BaseProtocolDecoder {
             .text("$")
             .expression(",?[^,]+,")              // event
             .groupBegin()
-            .expression("[^,]+,")                // vendor
+            .expression("[^,]*,")                // vendor
             .expression("[^,]+,")                // firmware version
-            .expression("[^,]+,")                // type
-            .number("d+,")
-            .expression("[LH],")                 // history
+            .expression("(..),")                 // status
+            .number("(d+),").optional()          // event
+            .expression("([LH]),")               // history
             .or()
-            .expression("[^,]+,")                // type
+            .expression("([^,]+),")              // type
             .groupEnd()
             .number("(d{15}),")                  // imei
             .groupBegin()
-            .expression("(..),")                 // status
+            .expression("([^,]{2}),")            // status
             .or()
             .expression("[^,]*,")                // vehicle registration
-            .number("([01]),")                   // valid
+            .number("([01]),").optional()        // valid
             .groupEnd()
-            .number("(dd),?(dd),?(dddd),")       // date (ddmmyyyy)
+            .number("(dd),?(dd),?(d{2,4}),")     // date (ddmmyyyy)
             .number("(dd),?(dd),?(dd),")         // time (hhmmss)
-            .expression("([AV]),").optional()    // valid
+            .expression("([01AV]),").optional()  // valid
             .number("(d+.d+),([NS]),")           // latitude
             .number("(d+.d+),([EW]),")           // longitude
             .groupBegin()
@@ -67,17 +69,21 @@ public class ItsProtocolDecoder extends BaseProtocolDecoder {
             .number("(d+.?d*),")                 // altitude
             .number("d+.?d*,")                   // pdop
             .number("d+.?d*,")                   // hdop
-            .expression("[^,]*,")
+            .expression("[^,]*,")                // operator
             .number("([01]),")                   // ignition
             .number("([01]),")                   // charging
             .number("(d+.?d*),")                 // power
             .number("(d+.?d*),")                 // battery
-            .number("[01],")                     // emergency
+            .number("([01]),")                   // emergency
             .expression("[CO]?,")                // tamper
-            .number("(?:x+,){5}")                // main cell
-            .number("(?:-?x+,){12}")             // other cells
-            .number("([01]{4}),")                // inputs
+            .expression("(.*),")                 // cells
+            .number("([012]{4}),")               // inputs
             .number("([01]{2}),")                // outputs
+            .groupBegin()
+            .number("d+,")                       // index
+            .number("(d+.?d*),")                 // adc1
+            .number("(d+.?d*),")                 // adc2
+            .groupEnd("?")
             .groupEnd("?")
             .or()
             .number("(-?d+.d+),")                // altitude
@@ -101,6 +107,12 @@ public class ItsProtocolDecoder extends BaseProtocolDecoder {
                 return Position.ALARM_CORNERING;
             case "OS":
                 return Position.ALARM_OVERSPEED;
+            case "TA":
+                return Position.ALARM_TAMPERING;
+            case "BD":
+                return Position.ALARM_POWER_CUT;
+            case "BR":
+                return Position.ALARM_POWER_RESTORED;
             default:
                 return null;
         }
@@ -121,6 +133,11 @@ public class ItsProtocolDecoder extends BaseProtocolDecoder {
             return null;
         }
 
+        String status = parser.next();
+        Integer event = parser.nextInt();
+        boolean history = "H".equals(parser.next());
+        String type = parser.next();
+
         DeviceSession deviceSession = getDeviceSession(channel, remoteAddress, parser.next());
         if (deviceSession == null) {
             return null;
@@ -129,8 +146,28 @@ public class ItsProtocolDecoder extends BaseProtocolDecoder {
         Position position = new Position(getProtocolName());
         position.setDeviceId(deviceSession.getDeviceId());
 
+        if (type != null && type.equals("EMR")) {
+            position.set(Position.KEY_ALARM, Position.ALARM_SOS);
+        }
+
+        if (event != null) {
+            position.set(Position.KEY_EVENT, event);
+        }
+        if (history) {
+            position.set(Position.KEY_ARCHIVE, true);
+        }
+
         if (parser.hasNext()) {
-            position.set(Position.KEY_ALARM, decodeAlarm(parser.next()));
+            status = parser.next();
+        }
+        if (status != null) {
+            if (status.equals("IN")) {
+                position.set(Position.KEY_IGNITION, true);
+            } else if (status.equals("IF")) {
+                position.set(Position.KEY_IGNITION, false);
+            } else {
+                position.set(Position.KEY_ALARM, decodeAlarm(status));
+            }
         }
 
         if (parser.hasNext()) {
@@ -138,7 +175,7 @@ public class ItsProtocolDecoder extends BaseProtocolDecoder {
         }
         position.setTime(parser.nextDateTime(Parser.DateTimeFormat.DMY_HMS));
         if (parser.hasNext()) {
-            position.setValid(parser.next().equals("A"));
+            position.setValid(parser.next().matches("[1A]"));
         }
         position.setLatitude(parser.nextCoordinate(Parser.CoordinateFormat.DEG_HEM));
         position.setLongitude(parser.nextCoordinate(Parser.CoordinateFormat.DEG_HEM));
@@ -149,14 +186,46 @@ public class ItsProtocolDecoder extends BaseProtocolDecoder {
             position.set(Position.KEY_SATELLITES, parser.nextInt());
         }
 
-        if (parser.hasNext(7)) {
+        if (parser.hasNext(8)) {
             position.setAltitude(parser.nextDouble());
             position.set(Position.KEY_IGNITION, parser.nextInt() > 0);
             position.set(Position.KEY_CHARGE, parser.nextInt() > 0);
             position.set(Position.KEY_POWER, parser.nextDouble());
             position.set(Position.KEY_BATTERY, parser.nextDouble());
-            position.set(Position.KEY_INPUT, parser.nextBinInt());
+
+            position.set("emergency", parser.nextInt() > 0);
+
+            String cellsString = parser.next();
+            if (!cellsString.contains("x")) {
+                String[] cells = cellsString.split(",");
+                int mcc = Integer.parseInt(cells[1]);
+                int mnc = Integer.parseInt(cells[2]);
+                int lac = Integer.parseInt(cells[3], 16);
+                int cid = Integer.parseInt(cells[4], 16);
+                Network network = new Network(CellTower.from(mcc, mnc, lac, cid, Integer.parseInt(cells[0])));
+                if (!cells[5].startsWith("(")) {
+                    for (int i = 0; i < 4; i++) {
+                        lac = Integer.parseInt(cells[5 + 3 * i + 1], 16);
+                        cid = Integer.parseInt(cells[5 + 3 * i + 2], 16);
+                        if (lac > 0 && cid > 0) {
+                            network.addCellTower(CellTower.from(mcc, mnc, lac, cid));
+                        }
+                    }
+                }
+                position.setNetwork(network);
+            }
+
+            String input = parser.next();
+            if (input.charAt(input.length() - 1) == '2') {
+                input = input.substring(0, input.length() - 1) + '0';
+            }
+            position.set(Position.KEY_INPUT, Integer.parseInt(input, 2));
             position.set(Position.KEY_OUTPUT, parser.nextBinInt());
+        }
+
+        if (parser.hasNext(2)) {
+            position.set(Position.PREFIX_ADC + 1, parser.nextDouble());
+            position.set(Position.PREFIX_ADC + 2, parser.nextDouble());
         }
 
         if (parser.hasNext(2)) {

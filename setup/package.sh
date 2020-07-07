@@ -60,11 +60,11 @@ check_requirement "Unzip" "which unzip" "Missing unzip binary"
 check_requirement "Ext JS" "ls $EXTJS_PATH" "ExtJS not found in $EXTJS_PATH (https://www.sencha.com/legal/GPL/)"
 check_requirement "Sencha Cmd" "which sencha" "Missing Sencha Cmd package (https://www.sencha.com/products/extjs/cmd-download/)"
 if [ $PLATFORM != "other" ]; then
-  check_requirement "Jlink" "which jlink" "Missing jlink binary (openjdk-10-jdk-headless)"
+  check_requirement "Jlink" "which jlink" "Missing jlink binary"
 fi
 if [ $PLATFORM = "all" -o $PLATFORM = "windows-64" ]; then
   check_requirement "Inno Extractor" "which innoextract" "Missing innoextract binary"
-  check_requirement "Inno Setup" "ls innosetup-*.exe" "Missing Inno Setup (http://www.jrsoftware.org/isdl.php)"
+  check_requirement "Inno Setup" "ls i*setup-*.exe" "Missing Inno Setup (http://www.jrsoftware.org/isdl.php)"
   check_requirement "Windows 64 Java" "ls java-*.windows.ojdkbuild.x86_64.zip" "Missing Windows 64 Java (https://github.com/ojdkbuild/ojdkbuild)"
   check_requirement "Wine" "which wine" "Missing wine binary"
 fi
@@ -72,10 +72,10 @@ if [ $PLATFORM = "all" -o $PLATFORM = "linux-64" -o $PLATFORM = "linux-arm" ]; t
   check_requirement "Makeself" "which makeself" "Missing makeself binary"
 fi
 if [ $PLATFORM = "all" -o $PLATFORM = "linux-64" ]; then
-  check_requirement "Linux 64 Java" "ls jdk-*-linux-x64.zip" "Missing Linux 64 Java (https://github.com/ojdkbuild/contrib_jdk10u-ci/releases)"
+  check_requirement "Linux 64 Java" "ls jdk-*-linux-x64.zip" "Missing Linux 64 Java (https://github.com/ojdkbuild/contrib_jdk11u-ci/releases)"
 fi
 if [ $PLATFORM = "all" -o $PLATFORM = "linux-arm" ]; then
-  check_requirement "Linux ARM Java" "ls jdk-*-linux-armhf.zip" "Missing Linux ARM Java (https://github.com/ojdkbuild/contrib_jdk10u-aarch32-ci/releases)"
+  check_requirement "Linux ARM Java" "ls jdk-*-linux-armhf.zip" "Missing Linux ARM Java (https://github.com/ojdkbuild/contrib_jdk11u-aarch32-ci/releases)"
 fi
 if [ $PREREQ = false ]; then
   info "Missing build requirements, aborting..."
@@ -100,7 +100,7 @@ prepare () {
   cp traccar.xml out/conf
 
   if [ $PLATFORM = "all" -o $PLATFORM = "windows-64" ]; then
-	innoextract innosetup-*.exe >/dev/null
+	innoextract i*setup-*.exe >/dev/null
 	info "If you got any errors here try Inno Setup version 5.5.5 (or check supported versions using 'innoextract -v')"
   fi
 }

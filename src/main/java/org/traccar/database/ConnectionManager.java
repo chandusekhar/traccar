@@ -139,10 +139,6 @@ public class ConnectionManager {
         }
 
         updateDevice(device);
-
-        if (status.equals(Device.STATUS_ONLINE) && !oldStatus.equals(Device.STATUS_ONLINE)) {
-            Context.getCommandsManager().sendQueuedCommands(getActiveDevice(deviceId));
-        }
     }
 
     public Map<Event, Position> updateDeviceState(long deviceId) {
@@ -157,7 +153,7 @@ public class ConnectionManager {
 
         event = Main.getInjector().getInstance(OverspeedEventHandler.class)
                 .updateOverspeedState(deviceState, Context.getDeviceManager().
-                        lookupAttributeDouble(deviceId, OverspeedEventHandler.ATTRIBUTE_SPEED_LIMIT, 0, false));
+                        lookupAttributeDouble(deviceId, OverspeedEventHandler.ATTRIBUTE_SPEED_LIMIT, 0, true, false));
         if (event != null) {
             result.putAll(event);
         }

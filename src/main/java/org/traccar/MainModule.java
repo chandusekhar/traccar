@@ -43,6 +43,8 @@ import org.traccar.geocoder.MapQuestGeocoder;
 import org.traccar.geocoder.MapmyIndiaGeocoder;
 import org.traccar.geocoder.NominatimGeocoder;
 import org.traccar.geocoder.OpenCageGeocoder;
+import org.traccar.geocoder.PositionStackGeocoder;
+import org.traccar.geocoder.TomTomGeocoder;
 import org.traccar.geolocation.GeolocationProvider;
 import org.traccar.geolocation.GoogleGeolocationProvider;
 import org.traccar.geolocation.MozillaGeolocationProvider;
@@ -59,6 +61,7 @@ import org.traccar.handler.GeolocationHandler;
 import org.traccar.handler.HemisphereHandler;
 import org.traccar.handler.MotionHandler;
 import org.traccar.handler.RemoteAddressHandler;
+import org.traccar.handler.TimeHandler;
 import org.traccar.handler.events.AlertEventHandler;
 import org.traccar.handler.events.CommandResultEventHandler;
 import org.traccar.handler.events.DriverEventHandler;
@@ -72,6 +75,7 @@ import org.traccar.reports.model.TripsConfig;
 
 import javax.annotation.Nullable;
 import javax.ws.rs.client.Client;
+import io.netty.util.Timer;
 
 public class MainModule extends AbstractModule {
 
@@ -169,9 +173,13 @@ public class MainModule extends AbstractModule {
                 case "ban":
                     return new BanGeocoder(cacheSize, addressFormat);
                 case "here":
-                    return new HereGeocoder(id, key, language, cacheSize, addressFormat);
+                    return new HereGeocoder(url, id, key, language, cacheSize, addressFormat);
                 case "mapmyindia":
                     return new MapmyIndiaGeocoder(url, key, cacheSize, addressFormat);
+                case "tomtom":
+                    return new TomTomGeocoder(url, key, cacheSize, addressFormat);
+                case "positionstack":
+                    return new PositionStackGeocoder(key, cacheSize, addressFormat);
                 default:
                     return new GoogleGeocoder(key, language, cacheSize, addressFormat);
             }
@@ -190,7 +198,7 @@ public class MainModule extends AbstractModule {
                 case "google":
                     return new GoogleGeolocationProvider(key);
                 case "opencellid":
-                    return new OpenCellIdGeolocationProvider(key);
+                    return new OpenCellIdGeolocationProvider(url, key);
                 case "unwired":
                     return new UnwiredGeolocationProvider(url, key);
                 default:
@@ -300,6 +308,15 @@ public class MainModule extends AbstractModule {
 
     @Singleton
     @Provides
+    public static TimeHandler provideTimeHandler(Config config) {
+        if (config.hasKey(Keys.TIME_OVERRIDE)) {
+            return new TimeHandler(config);
+        }
+        return null;
+    }
+
+    @Singleton
+    @Provides
     public static DefaultDataHandler provideDefaultDataHandler(@Nullable DataManager dataManager) {
         if (dataManager != null) {
             return new DefaultDataHandler(dataManager);
@@ -363,6 +380,12 @@ public class MainModule extends AbstractModule {
     @Provides
     public static DriverEventHandler provideDriverEventHandler(IdentityManager identityManager) {
         return new DriverEventHandler(identityManager);
+    }
+
+    @Singleton
+    @Provides
+    public static Timer provideTimer() {
+        return GlobalTimer.getTimer();
     }
 
     @Override

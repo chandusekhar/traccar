@@ -271,6 +271,22 @@ public class EelinkProtocolDecoder extends BaseProtocolDecoder {
                 position.set(Position.PREFIX_TEMP + 2, buf.readShort() / 16.0);
             }
 
+            if (buf.readableBytes() >= 2) {
+                int count = buf.readUnsignedByte();
+                buf.readUnsignedByte(); // id
+                for (int i = 1; i <= count; i++) {
+                    position.set("tag" + i + "Id", ByteBufUtil.hexDump(buf.readSlice(6)));
+                    buf.readUnsignedByte(); // signal level
+                    buf.readUnsignedByte(); // reserved
+                    buf.readUnsignedByte(); // model
+                    buf.readUnsignedByte(); // version
+                    position.set("tag" + i + "Battery", buf.readUnsignedShort() * 0.001);
+                    position.set("tag" + i + "Temp", buf.readShort() / 256.0);
+                    position.set("tag" + i + "Data", buf.readUnsignedShort());
+                }
+
+            }
+
         }
 
         return position;
@@ -327,7 +343,7 @@ public class EelinkProtocolDecoder extends BaseProtocolDecoder {
         return position;
     }
 
-    private Position decodeObd(DeviceSession deviceSession, ByteBuf buf, int index) {
+    private Position decodeObd(DeviceSession deviceSession, ByteBuf buf) {
 
         Position position = new Position(getProtocolName());
         position.setDeviceId(deviceSession.getDeviceId());
@@ -412,7 +428,8 @@ public class EelinkProtocolDecoder extends BaseProtocolDecoder {
 
                 return decodeNew(deviceSession, buf, type, index);
 
-            } else if (type == MSG_HEARTBEAT && buf.readableBytes() >= 2) {
+            } else if (type == MSG_HEARTBEAT && buf.readableBytes() >= 2
+                    || type == MSG_OBD && buf.readableBytes() == 4) {
 
                 Position position = new Position(getProtocolName());
                 position.setDeviceId(deviceSession.getDeviceId());
@@ -425,7 +442,7 @@ public class EelinkProtocolDecoder extends BaseProtocolDecoder {
 
             } else if (type == MSG_OBD) {
 
-                return decodeObd(deviceSession, buf, index);
+                return decodeObd(deviceSession, buf);
 
             } else if (type == MSG_DOWNLINK) {
 
